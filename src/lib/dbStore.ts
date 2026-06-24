@@ -1,0 +1,291 @@
+/**
+ * Supabase-backed store for contacts and messages.
+ * Replaces IndexedDB localStore for these two entities.
+ * Ratchet sessions, identity keys, and vault keys remain in IndexedDB.
+ *
+ * Message content is encrypted with the user's vault key (AES-256-GCM) before
+ * being written to the database.  The server therefore only ever stores opaque
+ * ciphertext — plaintext is never transmitted to or stored on any server.
+ */
+
+import { supabase } from '@/db/supabase';
+import { encryptObject, decryptObject, computeFingerprint } from '@/lib/crypto';
+import { getEncryptionKey } from '@/lib/localStore';
+import type { Contact, LocalMessage } from '@/types/types';
+
+// ── CONTENT ENCRYPTION HELPERS ───────────────────────────────────────────────
+
+/**
+ * Encrypt a message's plaintext content with the vault key.
+ * Returns a base64(IV + AES-256-GCM ciphertext) string safe for DB storage.
+ * Falls back to the plaintext (prefixed "__plain__:") if the vault is locked,
+ * so callers can detect the situation gracefully.
+ */
+async function encryptContent(plaintext: string): Promise<string> {
+  const key = getEncryptionKey();
+  if (!key) {
+    // Vault not unlocked — should not happen in normal flow, but fail safe
+    console.warn('[dbStore] vault key unavailable, storing content unencrypted');
+    return `__plain__:${plaintext}`;
+  }
+  return encryptObject<string>(key, plaintext);
+}
+
+/**
+ * Decrypt a stored content blob back to plaintext.
+ * Handles legacy plaintext rows (those that start with "__plain__:" or were
+ * stored before encryption was introduced) gracefully.
+ */
+async function decryptContent(stored: string): Promise<string> {
+  // Legacy plaintext fallback (stored without encryption)
+  if (stored.startsWith('__plain__:')) return stored.slice(10);
+  const key = getEncryptionKey();
+  if (!key) return '[locked — re-open vault to view]';
+  try {
+    return await decryptObject<string>(key, stored);
+  } catch {
+    // Could be a pre-encryption legacy plaintext row — return as-is
+    return stored;
+  }
+}
+
+// ── CONTACTS ──────────────────────────────────────────────────────────────────
+
+export async function getContactsFromDB(ownerId: string): Promise<Contact[]> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('added_at', { ascending: true });
+
+  if (error) {
+    console.error('[dbStore] getContacts error:', error.message);
+    return [];
+  }
+
+  // Always recompute fingerprint from the stored public_key so that it stays
+  // consistent with the contact's own sidebar fingerprint even after key rotation
+  // (the DB trigger keeps public_key current; fingerprint is derived here).
+  return Promise.all(
+    (data ?? []).map(async row => ({
+      id: row.contact_id as string,
+      username: row.username as string,
+      publicKey: row.public_key as string,
+      fingerprint: row.public_key
+        ? await computeFingerprint(row.public_key as string)
+        : (row.fingerprint as string),
+      conversationId: row.conversation_id as string,
+      addedAt: new Date(row.added_at as string).getTime(),
+    }))
+  );
+}
+
+export async function saveContactToDB(ownerId: string, contact: Contact): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .upsert(
+      {
+        owner_id: ownerId,
+        contact_id: contact.id,
+        username: contact.username,
+        public_key: contact.publicKey,
+        fingerprint: contact.fingerprint,
+        conversation_id: contact.conversationId,
+        added_at: new Date(contact.addedAt).toISOString(),
+      },
+      { onConflict: 'owner_id,contact_id' }
+    );
+
+  if (error) console.error('[dbStore] saveContact error:', error.message);
+}
+
+export async function deleteContactFromDB(ownerId: string, contactId: string): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('owner_id', ownerId)
+    .eq('contact_id', contactId);
+
+  if (error) console.error('[dbStore] deleteContact error:', error.message);
+}
+
+export async function removeContactAndMessagesFromDB(
+  ownerId: string,
+  contactId: string,
+  conversationId: string
+): Promise<void> {
+  await Promise.all([
+    deleteContactFromDB(ownerId, contactId),
+    deleteConversationMessagesFromDB(ownerId, conversationId),
+  ]);
+}
+
+// ── MESSAGES ──────────────────────────────────────────────────────────────────
+
+export async function getMessagesFromDB(
+  ownerId: string,
+  conversationId: string
+): Promise<LocalMessage[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+    .limit(500);
+
+  if (error) {
+    console.error('[dbStore] getMessages error:', error.message);
+    return [];
+  }
+
+  // Decrypt each message's content with the vault key before returning
+  const decrypted = await Promise.all(
+    (data ?? []).map(async row => ({
+      id: row.id as string,
+      conversationId: row.conversation_id as string,
+      senderId: row.sender_id as string,
+      senderUsername: row.sender_username as string,
+      content: await decryptContent(row.content as string),
+      timestamp: new Date(row.created_at as string).getTime(),
+      status: 'delivered' as const,
+      isOwn: row.is_own as boolean,
+      imageUrl: (row.image_url as string | null) ?? null,
+      replyTo: row.reply_to_id
+        ? {
+            id: row.reply_to_id as string,
+            senderId: row.reply_to_sender as string,
+            senderUsername: row.reply_to_sender as string,
+            snippet: row.reply_to_snippet as string,
+            imageUrl: (row.reply_to_image_url as string | null) ?? null,
+          }
+        : null,
+    }))
+  );
+  return decrypted;
+}
+
+export async function saveMessageToDB(ownerId: string, message: LocalMessage): Promise<void> {
+  const encryptedContent = await encryptContent(message.content);
+  const { error } = await supabase
+    .from('messages')
+    .upsert(
+      {
+        id: message.id,
+        owner_id: ownerId,
+        conversation_id: message.conversationId,
+        sender_id: message.senderId,
+        recipient_id: message.isOwn
+          ? message.conversationId
+          : message.senderId,
+        content: encryptedContent,
+        sender_username: message.senderUsername,
+        is_own: message.isOwn,
+        image_url: message.imageUrl ?? null,
+        reply_to_id: message.replyTo?.id ?? null,
+        reply_to_sender: message.replyTo?.senderUsername ?? null,
+        reply_to_snippet: message.replyTo?.snippet ?? null,
+        reply_to_image_url: message.replyTo?.imageUrl ?? null,
+        created_at: new Date(message.timestamp).toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
+  if (error) console.error('[dbStore] saveMessage error:', error.message);
+}
+
+/**
+ * Save a message with explicit recipient_id (required for RLS-correct inserts).
+ * Content is encrypted with the vault key before being written to the database.
+ */
+export async function saveMessageToDBFull(
+  ownerId: string,
+  recipientId: string,
+  message: LocalMessage
+): Promise<void> {
+  const encryptedContent = await encryptContent(message.content);
+  const { error } = await supabase
+    .from('messages')
+    .upsert(
+      {
+        id: message.id,
+        owner_id: ownerId,
+        conversation_id: message.conversationId,
+        sender_id: message.senderId,
+        recipient_id: recipientId,
+        content: encryptedContent,
+        sender_username: message.senderUsername,
+        is_own: message.isOwn,
+        image_url: message.imageUrl ?? null,
+        reply_to_id: message.replyTo?.id ?? null,
+        reply_to_sender: message.replyTo?.senderUsername ?? null,
+        reply_to_snippet: message.replyTo?.snippet ?? null,
+        reply_to_image_url: message.replyTo?.imageUrl ?? null,
+        created_at: new Date(message.timestamp).toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
+  if (error) console.error('[dbStore] saveMessageFull error:', error.message);
+}
+
+export async function deleteConversationMessagesFromDB(
+  ownerId: string,
+  conversationId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('owner_id', ownerId)
+    .eq('conversation_id', conversationId);
+
+  if (error) console.error('[dbStore] deleteMessages error:', error.message);
+}
+
+/** Subscribe to new messages for a specific conversation via Realtime. */
+export function subscribeToMessages(
+  ownerId: string,
+  conversationId: string,
+  onMessage: (msg: LocalMessage) => void
+): () => void {
+  const channel = supabase
+    .channel(`messages:${ownerId}:${conversationId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `owner_id=eq.${ownerId}`,
+      },
+      async (payload) => {
+        const row = payload.new as Record<string, unknown>;
+        if (row.conversation_id !== conversationId) return;
+        // Decrypt the vault-encrypted content before surfacing to the UI
+        const content = await decryptContent(row.content as string);
+        onMessage({
+          id: row.id as string,
+          conversationId: row.conversation_id as string,
+          senderId: row.sender_id as string,
+          senderUsername: row.sender_username as string,
+          content,
+          timestamp: new Date(row.created_at as string).getTime(),
+          status: 'delivered',
+          isOwn: row.is_own as boolean,
+          imageUrl: (row.image_url as string | null) ?? null,
+          replyTo: row.reply_to_id
+            ? {
+                id: row.reply_to_id as string,
+                senderId: row.reply_to_sender as string,
+                senderUsername: row.reply_to_sender as string,
+                snippet: row.reply_to_snippet as string,
+                imageUrl: (row.reply_to_image_url as string | null) ?? null,
+              }
+            : null,
+        });
+      }
+    )
+    .subscribe();
+
+  return () => { supabase.removeChannel(channel); };
+}

@@ -1,0 +1,26 @@
+{
+  "name": "ShadowCrypt",
+  "short_name": "ShadowCrypt",
+  "description": "Zero-knowledge end-to-end encrypted messaging",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1117",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["utilities", "social"],
+  "lang": "en-US"
+}
