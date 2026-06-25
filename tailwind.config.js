@@ -1,6 +1,5 @@
 import tailwindAnimate from 'tailwindcss-animate';
 import containerQuery from '@tailwindcss/container-queries';
-import intersect from 'tailwindcss-intersect';
 
 export default {
     darkMode: ['class'],
@@ -9,8 +8,7 @@ export default {
         './pages/**/*.{ts,tsx}',
         './components/**/*.{ts,tsx}',
         './app/**/*.{ts,tsx}',
-        './src/**/*.{ts,tsx}',
-        './node_modules/streamdown/dist/**/*.js'
+        './src/**/*.{ts,tsx}'
     ],
     safelist: ['border', 'border-border'],
     prefix: '',
@@ -149,7 +147,6 @@ export default {
     plugins: [
         tailwindAnimate,
         containerQuery,
-        intersect,
         function ({addUtilities}) {
             addUtilities(
                 {
