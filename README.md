@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/images/logo/logo-dark.svg" alt="ShadowCrypt Logo" width="80" />
+  <img src="public/logo.svg" alt="ShadowCrypt Logo" width="80" />
   <h1>ShadowCrypt</h1>
   <p><strong>End-to-end encrypted messaging with a zero-knowledge relay</strong></p>
 
