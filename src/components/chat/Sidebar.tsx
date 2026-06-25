@@ -42,7 +42,7 @@ import { toast } from 'sonner';
 import logoUrl from '@/assets/logo.svg';
 import { isDND, setDND } from '@/lib/notificationSound';
 
-const APP_VERSION = 'v2.1.0 (Web)';
+const APP_VERSION = 'v2.2.1 (Web)';
 
 function BuyMeACoffee() {
   return (

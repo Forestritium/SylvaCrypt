@@ -174,3 +174,4 @@ We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before 
 ShadowCrypt is licensed under the **GNU Affero General Public License v3.0**. See [LICENSE](LICENSE) for details.
 
 > Under the AGPL, if you modify ShadowCrypt and run it as a network service, you must release your modifications under the same license.
+

@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { Shield, Lock, Zap } from 'lucide-react';
 import logoUrl from '@/assets/logo.svg';
 
-const APP_VERSION = 'v2.0.0 (Web)';
+const APP_VERSION = 'v2.2.1 (Web)';
 
 const STAGES = [
   { label: 'Initializing frontend...', target: 30, duration: 600 },
