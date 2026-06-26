@@ -166,13 +166,13 @@ describe('out-of-order message delivery', () => {
   it('delivers messages in reverse order (2, 1, 0)', async () => {
     const { aliceSession, bobSession } = await initPair();
     let aS = aliceSession;
-    const envelopes: ReturnType<typeof ratchetEncrypt> extends Promise<infer T> ? T : never[] = [];
+    const envelopes: Awaited<ReturnType<typeof ratchetEncrypt>>[] = [];
 
     // Alice encrypts 3 messages
     for (const msg of ['msg0', 'msg1', 'msg2']) {
       const result = await ratchetEncrypt(aS, msg);
-      envelopes.push(result as never);
-      aS = (result as Awaited<ReturnType<typeof ratchetEncrypt>>).updatedSession;
+      envelopes.push(result);
+      aS = result.updatedSession;
     }
 
     // Bob decrypts in reverse
@@ -182,7 +182,7 @@ describe('out-of-order message delivery', () => {
     for (const r of [...envelopes].reverse()) {
       const { plaintext, updatedSession } = await ratchetDecrypt(
         bS,
-        (r as Awaited<ReturnType<typeof ratchetEncrypt>>).envelope
+        r.envelope
       );
       decrypted.push(plaintext);
       bS = updatedSession;

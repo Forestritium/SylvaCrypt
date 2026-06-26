@@ -11,12 +11,4 @@ export default defineConfig({
     },
     dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
   },
-  test: {
-    environment: "node",
-    globals: true,
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
 });
