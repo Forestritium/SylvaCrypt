@@ -302,7 +302,7 @@ export function ChatArea({
   // for messages that arrive AFTER this moment (i.e. live incoming, not unread backlog)
   const conversationOpenedAt = useRef<number>(0);
   // Screenshot prevention
-  const { containerProps: screenshotContainerProps, showCaptureWarning } = useScreenshotPrevention();
+  const { containerProps: screenshotContainerProps, overlayVisible } = useScreenshotPrevention();
 
   // Unlock Web Audio on first user interaction (satisfies browser autoplay policy)
   useEffect(() => {
@@ -662,10 +662,10 @@ export function ChatArea({
   const isRequestPending = isOutgoingPending || isIncomingPending;
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background" {...screenshotContainerProps}>
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background" onContextMenu={screenshotContainerProps.onContextMenu}>
 
       {/* ── Screen capture warning overlay ── */}
-      {showCaptureWarning && (
+      {overlayVisible && (
         <div className="absolute inset-0 z-[100] bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center gap-4 pointer-events-none select-none">
           <Lock className="w-10 h-10 text-primary" />
           <p className="text-sm font-semibold text-foreground text-balance text-center px-8">

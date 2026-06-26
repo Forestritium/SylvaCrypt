@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { autoDeleteOldMessages } from '@/lib/localStore';
 import { getContactsFromDB, saveContactToDB, removeContactAndMessagesFromDB } from '@/lib/dbStore';
+import { useScreenshotPrevention } from '@/hooks/use-screenshot-prevention';
 import {
   subscribeToRelay,
   fetchPendingRelayMessages,
@@ -60,6 +61,9 @@ const PP_SEEN_KEY = 'sc_pp_v2_seen';
 export default function ChatPage() {
   const { user, profile, session, loading, signOut } = useAuth();
   const navigate = useNavigate();
+
+  // Document-level screenshot prevention — active for the entire chat page
+  useScreenshotPrevention();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationPreview | null>(null);
@@ -363,7 +367,7 @@ export default function ChatPage() {
             </DialogTitle>
             <DialogDescription className="text-muted-foreground text-pretty">
               We have updated our Privacy Policy. We recommend you check it out to understand
-              how your data is protected in ShadowCrypt v2.2.1.
+              how your data is protected in ShadowCrypt v2.3.1.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2 mt-1">
