@@ -62,7 +62,12 @@ export interface LocalMessage {
   timestamp: number;
   status: 'sent' | 'delivered' | 'failed';
   isOwn: boolean;
-  imageUrl?: string | null; // public Supabase Storage URL for image messages
+  /** @deprecated Legacy unencrypted public URL — kept for backward compat only. New messages use imageStoragePath + imageKeyBase64. */
+  imageUrl?: string | null;
+  /** Supabase Storage path of the AES-GCM ciphertext blob (chat-images bucket). */
+  imageStoragePath?: string | null;
+  /** Base64-encoded 256-bit AES-GCM key for the encrypted image blob. Travels inside Double Ratchet ciphertext. */
+  imageKeyBase64?: string | null;
   replyTo?: ReplyTo | null; // quoted reply context
 }
 

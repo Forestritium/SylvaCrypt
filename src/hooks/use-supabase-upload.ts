@@ -46,7 +46,13 @@ type UseSupabaseUploadOptions = {
    * When set to false, an error is thrown if the object already exists. Defaults to `false`
    */
   upsert?: boolean
-
+  /**
+   * When set to true, each file is encrypted with AES-256-GCM before upload.
+   * The raw bytes never leave the browser; only the ciphertext is stored.
+   * The generated decryption keys are returned in `uploadedKeys` (filename → base64 key).
+   * Use signed URLs (not public URLs) to retrieve encrypted blobs.
+   */
+  encryptBefore?: boolean
   /**
    * initialized Supabase client instance
    */
@@ -64,6 +70,7 @@ const useSupabaseUpload = (options: UseSupabaseUploadOptions) => {
     maxFiles = 1,
     cacheControl = 3600,
     upsert = false,
+    encryptBefore = false,
     supabase
   } = options
 
@@ -71,6 +78,8 @@ const useSupabaseUpload = (options: UseSupabaseUploadOptions) => {
   const [loading, setLoading] = useState<boolean>(false)
   const [errors, setErrors] = useState<{ name: string; message: string }[]>([])
   const [successes, setSuccesses] = useState<string[]>([])
+  // Maps filename → base64 AES-256-GCM key for files uploaded with encryptBefore=true
+  const [uploadedKeys, setUploadedKeys] = useState<Record<string, string>>({})
 
   const isSuccess = useMemo(() => {
     if (errors.length === 0 && successes.length === 0) {
@@ -128,12 +137,37 @@ const useSupabaseUpload = (options: UseSupabaseUploadOptions) => {
           ]
         : files
 
+    const newKeys: Record<string, string> = {}
+
     const responses = await Promise.all(
       filesToUpload.map(async (file) => {
+        let uploadBody: File | Blob = file
+        let contentType = file.type
+        let uploadPath = !!path ? `${path}/${file.name}` : file.name
+
+        if (encryptBefore) {
+          // Encrypt with AES-256-GCM; prepend 12-byte IV to ciphertext
+          const rawKey = crypto.getRandomValues(new Uint8Array(32))
+          const cryptoKey = await crypto.subtle.importKey(
+            'raw', rawKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+          )
+          const iv = crypto.getRandomValues(new Uint8Array(12))
+          const plainbuf = await file.arrayBuffer()
+          const cipherbuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, plainbuf)
+          const combined = new Uint8Array(12 + cipherbuf.byteLength)
+          combined.set(iv, 0)
+          combined.set(new Uint8Array(cipherbuf), 12)
+          uploadBody = new Blob([combined], { type: 'application/octet-stream' })
+          contentType = 'application/octet-stream'
+          uploadPath = uploadPath + '.enc'
+          newKeys[file.name] = btoa(String.fromCharCode(...rawKey))
+        }
+
         const { error } = await supabase.storage
           .from(bucketName)
-          .upload(!!path ? `${path}/${file.name}` : file.name, file, {
+          .upload(uploadPath, uploadBody, {
             cacheControl: cacheControl.toString(),
+            contentType,
             upsert,
           })
         if (error) {
@@ -143,6 +177,10 @@ const useSupabaseUpload = (options: UseSupabaseUploadOptions) => {
         }
       })
     )
+
+    if (encryptBefore && Object.keys(newKeys).length > 0) {
+      setUploadedKeys(prev => ({ ...prev, ...newKeys }))
+    }
 
     const responseErrors = responses.filter((x) => x.message !== undefined)
     // if there were errors previously, this function tried to upload the files again so we should clear/overwrite the existing errors.
@@ -155,7 +193,7 @@ const useSupabaseUpload = (options: UseSupabaseUploadOptions) => {
     setSuccesses(newSuccesses)
 
     setLoading(false)
-  }, [files, path, bucketName, errors, successes])
+  }, [files, path, bucketName, errors, successes, encryptBefore, cacheControl, upsert, supabase])
 
   useEffect(() => {
     if (files.length === 0) {
@@ -187,6 +225,7 @@ const useSupabaseUpload = (options: UseSupabaseUploadOptions) => {
     errors,
     setErrors,
     onUpload,
+    uploadedKeys,
     maxFileSize: maxFileSize,
     maxFiles: maxFiles,
     allowedMimeTypes,

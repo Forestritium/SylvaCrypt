@@ -151,6 +151,8 @@ export async function getMessagesFromDB(
       status: 'delivered' as const,
       isOwn: row.is_own as boolean,
       imageUrl: (row.image_url as string | null) ?? null,
+      imageStoragePath: (row.image_storage_path as string | null) ?? null,
+      imageKeyBase64: (row.image_key_b64 as string | null) ?? null,
       replyTo: row.reply_to_id
         ? {
             id: row.reply_to_id as string,
@@ -182,6 +184,8 @@ export async function saveMessageToDB(ownerId: string, message: LocalMessage): P
         sender_username: message.senderUsername,
         is_own: message.isOwn,
         image_url: message.imageUrl ?? null,
+        image_storage_path: message.imageStoragePath ?? null,
+        image_key_b64: message.imageKeyBase64 ?? null,
         reply_to_id: message.replyTo?.id ?? null,
         reply_to_sender: message.replyTo?.senderUsername ?? null,
         reply_to_snippet: message.replyTo?.snippet ?? null,
@@ -217,6 +221,8 @@ export async function saveMessageToDBFull(
         sender_username: message.senderUsername,
         is_own: message.isOwn,
         image_url: message.imageUrl ?? null,
+        image_storage_path: message.imageStoragePath ?? null,
+        image_key_b64: message.imageKeyBase64 ?? null,
         reply_to_id: message.replyTo?.id ?? null,
         reply_to_sender: message.replyTo?.senderUsername ?? null,
         reply_to_snippet: message.replyTo?.snippet ?? null,
@@ -273,6 +279,8 @@ export function subscribeToMessages(
           status: 'delivered',
           isOwn: row.is_own as boolean,
           imageUrl: (row.image_url as string | null) ?? null,
+          imageStoragePath: (row.image_storage_path as string | null) ?? null,
+          imageKeyBase64: (row.image_key_b64 as string | null) ?? null,
           replyTo: row.reply_to_id
             ? {
                 id: row.reply_to_id as string,

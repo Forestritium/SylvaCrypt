@@ -20,12 +20,13 @@ import {
 } from '@/components/ui/dialog';
 import type { ConversationPreview, LocalMessage, Contact, ContactRequest, ReplyTo } from '@/types/types';
 import { getMessagesFromDB, subscribeToMessages } from '@/lib/dbStore';
-import { sendEncryptedMessage, uploadChatImage, ImageLimitError, getTodayImageCount } from '@/lib/relay';
+import { sendEncryptedMessage, uploadChatImage, ImageLimitError, getTodayImageCount, fetchAndDecryptChatImage } from '@/lib/relay';
 import { broadcastTyping, subscribeToTyping } from '@/lib/relay';
 import { supabase } from '@/db/supabase';
 import { ReplyPreviewBar } from './ReplyPreviewBar';
 import { QuotedMessage } from './QuotedMessage';
 import { playNotificationSound, unlockAudio, isMuted, setMuted, isDND } from '@/lib/notificationSound';
+import { useScreenshotPrevention } from '@/hooks/use-screenshot-prevention';
 
 const IMAGE_DAILY_LIMIT = 10;
 
@@ -62,9 +63,10 @@ interface MessageBubbleProps {
   senderInitial: string;
   onReply: (msg: LocalMessage) => void;
   onScrollTo: (id: string) => void;
+  decryptedImageUrl?: string | null;
 }
 
-function MessageBubble({ message, isSelf, showAvatar, senderInitial, onReply, onScrollTo }: MessageBubbleProps) {
+function MessageBubble({ message, isSelf, showAvatar, senderInitial, onReply, onScrollTo, decryptedImageUrl }: MessageBubbleProps) {
   const [imgOpen, setImgOpen] = useState(false);
   const [showReplyBtn, setShowReplyBtn] = useState(false);
   // Swipe-right to reply (touch)
@@ -137,6 +139,7 @@ function MessageBubble({ message, isSelf, showAvatar, senderInitial, onReply, on
                 className="rounded-xl max-w-[220px] md:max-w-[280px] w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
                 onClick={() => setImgOpen(true)}
                 loading="lazy"
+                draggable={false}
               />
               {imgOpen && (
                 <div
@@ -155,9 +158,50 @@ function MessageBubble({ message, isSelf, showAvatar, senderInitial, onReply, on
                     alt="Full size"
                     className="max-w-full max-h-[90dvh] rounded-xl object-contain"
                     onClick={e => e.stopPropagation()}
+                    draggable={false}
                   />
                 </div>
               )}
+            </div>
+          )}
+          {/* Encrypted image — resolved to a blob URL via signed URL + AES-GCM decryption */}
+          {!message.imageUrl && decryptedImageUrl && (
+            <div className="mb-1">
+              <img
+                src={decryptedImageUrl}
+                alt="Shared image"
+                className="rounded-xl max-w-[220px] md:max-w-[280px] w-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                onClick={() => setImgOpen(true)}
+                loading="lazy"
+                draggable={false}
+              />
+              {imgOpen && (
+                <div
+                  className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+                  onClick={() => setImgOpen(false)}
+                >
+                  <button
+                    className="absolute top-4 right-4 text-white/80 hover:text-white"
+                    onClick={() => setImgOpen(false)}
+                    aria-label="Close"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                  <img
+                    src={decryptedImageUrl}
+                    alt="Full size"
+                    className="max-w-full max-h-[90dvh] rounded-xl object-contain"
+                    onClick={e => e.stopPropagation()}
+                    draggable={false}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {/* Encrypted image loading placeholder */}
+          {!message.imageUrl && message.imageStoragePath && !decryptedImageUrl && (
+            <div className="mb-1 w-[180px] h-[120px] rounded-xl bg-muted animate-pulse flex items-center justify-center">
+              <Lock className="w-5 h-5 text-muted-foreground/50" />
             </div>
           )}
           {message.content && (
@@ -241,6 +285,8 @@ export function ChatArea({
   const [imageLimitOpen, setImageLimitOpen] = useState(false);
   const [imageLimitResetAt, setImageLimitResetAt] = useState<Date | null>(null);
   const [todayImageCount, setTodayImageCount] = useState(0);
+  // Decrypted image blob URLs: messageId → objectURL (resolved from encrypted storage)
+  const [decryptedImages, setDecryptedImages] = useState<Record<string, string>>({});
   // Unread divider: timestamp of the last message seen before this session opened
   const [unreadSinceTs, setUnreadSinceTs] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -255,6 +301,8 @@ export function ChatArea({
   // Timestamp (ms) when the current conversation was opened — sound only plays
   // for messages that arrive AFTER this moment (i.e. live incoming, not unread backlog)
   const conversationOpenedAt = useRef<number>(0);
+  // Screenshot prevention
+  const { containerProps: screenshotContainerProps, showCaptureWarning } = useScreenshotPrevention();
 
   // Unlock Web Audio on first user interaction (satisfies browser autoplay policy)
   useEffect(() => {
@@ -266,6 +314,38 @@ export function ChatArea({
       window.removeEventListener('keydown', unlock);
     };
   }, []);
+
+  // Resolve encrypted image blobs for any message that has imageStoragePath + imageKeyBase64
+  // but no decrypted URL yet. Fetches a signed URL, downloads the ciphertext, decrypts
+  // with AES-256-GCM, and stores the resulting blob: URL in decryptedImages.
+  useEffect(() => {
+    const pending = messages.filter(
+      m => m.imageStoragePath && m.imageKeyBase64 && !decryptedImages[m.id]
+    );
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+    const newUrls: Record<string, string> = {};
+
+    (async () => {
+      await Promise.allSettled(
+        pending.map(async m => {
+          try {
+            const blobUrl = await fetchAndDecryptChatImage(m.imageStoragePath!, m.imageKeyBase64!);
+            if (!cancelled) newUrls[m.id] = blobUrl;
+          } catch (err) {
+            console.error('[ShadowCrypt] Failed to decrypt image for message', m.id, err);
+          }
+        })
+      );
+      if (!cancelled && Object.keys(newUrls).length > 0) {
+        setDecryptedImages(prev => ({ ...prev, ...newUrls }));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -464,12 +544,12 @@ export function ChatArea({
     if (!contact) { toast.error('Contact not found.'); return; }
 
     const tempId = crypto.randomUUID();
-    let imageUrl: string | undefined;
+    let imageAttachment: { storagePath: string; imageKeyBase64: string } | undefined;
 
     if (selectedImage) {
       setUploadingImage(true);
       try {
-        imageUrl = await uploadChatImage(currentUserId, selectedImage);
+        imageAttachment = await uploadChatImage(currentUserId, selectedImage);
         setTodayImageCount(c => c + 1);
       } catch (err) {
         if (err instanceof ImageLimitError) {
@@ -496,7 +576,9 @@ export function ChatArea({
       timestamp: Date.now(),
       status: 'sent',
       isOwn: true,
-      imageUrl: imageUrl ?? null,
+      imageUrl: null,
+      imageStoragePath: imageAttachment?.storagePath ?? null,
+      imageKeyBase64: imageAttachment?.imageKeyBase64 ?? null,
       replyTo: currentReply,
     };
     setMessages(prev => [...prev, optimistic]);
@@ -508,7 +590,7 @@ export function ChatArea({
     try {
       await sendEncryptedMessage(
         currentUserId, currentUsername, contact.id,
-        conversation.id, text, contact.publicKey, tempId, imageUrl, currentReply
+        conversation.id, text, contact.publicKey, tempId, imageAttachment, currentReply
       );
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
       onMessageSent();
@@ -580,7 +662,20 @@ export function ChatArea({
   const isRequestPending = isOutgoingPending || isIncomingPending;
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
+    <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background" {...screenshotContainerProps}>
+
+      {/* ── Screen capture warning overlay ── */}
+      {showCaptureWarning && (
+        <div className="absolute inset-0 z-[100] bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center gap-4 pointer-events-none select-none">
+          <Lock className="w-10 h-10 text-primary" />
+          <p className="text-sm font-semibold text-foreground text-balance text-center px-8">
+            Screen capture protection is active
+          </p>
+          <p className="text-xs text-muted-foreground text-center px-8 text-pretty">
+            This conversation is end-to-end encrypted. Content is hidden while the window is not in focus.
+          </p>
+        </div>
+      )}
 
       {/* ── Chat header ── */}
       <div className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-border bg-card">
@@ -728,6 +823,7 @@ export function ChatArea({
                         senderInitial={senderInitial}
                         onReply={handleReply}
                         onScrollTo={scrollToMessage}
+                        decryptedImageUrl={decryptedImages[msg.id] ?? null}
                       />
                     </div>
                   );

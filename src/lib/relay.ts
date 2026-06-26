@@ -43,31 +43,100 @@ export class ImageLimitError extends Error {
   }
 }
 
+/**
+ * Encrypt a File with AES-256-GCM using a fresh random key.
+ * Returns the ciphertext Blob and the base64-encoded key.
+ * Format: 12-byte IV prepended to the ciphertext (same as encryptObject).
+ */
+async function encryptFileAESGCM(file: File): Promise<{ blob: Blob; keyBase64: string }> {
+  const rawKey = crypto.getRandomValues(new Uint8Array(32));
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', rawKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plainbuf = await file.arrayBuffer();
+  const cipherbuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, plainbuf);
+
+  // Prepend IV so the recipient can extract it: [12 bytes IV][ciphertext]
+  const combined = new Uint8Array(12 + cipherbuf.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(cipherbuf), 12);
+
+  const keyBase64 = btoa(String.fromCharCode(...rawKey));
+  return { blob: new Blob([combined], { type: 'application/octet-stream' }), keyBase64 };
+}
+
+/**
+ * Decrypt an AES-256-GCM ciphertext blob fetched from Supabase Storage.
+ * Expects the blob to start with a 12-byte IV followed by the ciphertext.
+ * Returns the decrypted bytes as an ArrayBuffer.
+ */
+async function decryptBlobAESGCM(blob: Blob, keyBase64: string): Promise<ArrayBuffer> {
+  const raw = Uint8Array.from(atob(keyBase64), c => c.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', raw, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+  );
+  const combined = new Uint8Array(await blob.arrayBuffer());
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+  return crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciphertext);
+}
+
+/**
+ * Upload an image to Supabase Storage as AES-256-GCM ciphertext.
+ * The plaintext bytes never leave the browser.
+ * Returns the storage path and the base64-encoded decryption key.
+ * The key MUST be transmitted inside the Double Ratchet ciphertext — never in cleartext.
+ * Throws ImageLimitError if the user has hit their daily 10-image cap.
+ */
 export async function uploadChatImage(
   userId: string,
   file: File
-): Promise<string> {
+): Promise<{ storagePath: string; imageKeyBase64: string }> {
   // Rate-limit check (read-only, before upload)
   const count = await getTodayImageCount(userId);
   if (count >= IMAGE_DAILY_LIMIT) {
-    // Reset is at midnight UTC of the next day
     const reset = new Date();
     reset.setUTCHours(24, 0, 0, 0);
     throw new ImageLimitError(reset);
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+  const { blob: ciphertextBlob, keyBase64 } = await encryptFileAESGCM(file);
+
+  // Store as opaque encrypted blob; extension .enc signals no public content type
+  const storagePath = `${userId}/${crypto.randomUUID()}.enc`;
   const { error: uploadErr } = await supabase.storage
     .from('chat-images')
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(storagePath, ciphertextBlob, { contentType: 'application/octet-stream', upsert: false });
   if (uploadErr) throw new Error(`Image upload failed: ${uploadErr.message}`);
 
   // Atomically increment counter after successful upload
   await supabase.rpc('increment_image_send_count', { p_user_id: userId });
 
-  const { data } = supabase.storage.from('chat-images').getPublicUrl(path);
-  return data.publicUrl;
+  return { storagePath, imageKeyBase64: keyBase64 };
+}
+
+/**
+ * Fetch an encrypted image blob from Supabase Storage via a short-lived signed URL,
+ * decrypt it with the provided AES-256-GCM key, and return an object URL for display.
+ * The caller is responsible for calling URL.revokeObjectURL() when done.
+ */
+export async function fetchAndDecryptChatImage(
+  storagePath: string,
+  imageKeyBase64: string
+): Promise<string> {
+  // Create a signed URL valid for 1 hour — no public CDN exposure
+  const { data: signedData, error: signErr } = await supabase.storage
+    .from('chat-images')
+    .createSignedUrl(storagePath, 3600);
+  if (signErr || !signedData?.signedUrl) throw new Error('Failed to create signed URL');
+
+  const response = await fetch(signedData.signedUrl);
+  if (!response.ok) throw new Error(`Failed to fetch encrypted image: ${response.status}`);
+  const ciphertextBlob = await response.blob();
+
+  const plainbuf = await decryptBlobAESGCM(ciphertextBlob, imageKeyBase64);
+  return URL.createObjectURL(new Blob([plainbuf]));
 }
 
 // Send an encrypted message to a recipient
@@ -79,7 +148,7 @@ export async function sendEncryptedMessage(
   plaintext: string,
   recipientPublicKey: string,
   messageId?: string,  // caller can pass a stable ID so DB row matches optimistic UI entry
-  imageUrl?: string,   // optional public URL of an already-uploaded image
+  imageAttachment?: { storagePath: string; imageKeyBase64: string }, // encrypted image metadata
   replyTo?: import('@/types/types').ReplyTo | null // optional reply context
 ): Promise<LocalMessage> {
   // Get or initialize ratchet session
@@ -95,16 +164,26 @@ export async function sendEncryptedMessage(
     );
   }
 
+  // If there is an image attachment, embed the storage path and AES key INSIDE the
+  // ratchet plaintext so they travel encrypted end-to-end and are never visible to
+  // the relay operator.  Plain text-only messages stay as a bare string (backward compat).
+  let ratchetPlaintext = plaintext;
+  if (imageAttachment) {
+    ratchetPlaintext = JSON.stringify({
+      v: 2,
+      t: plaintext,
+      isp: imageAttachment.storagePath,
+      ik: imageAttachment.imageKeyBase64,
+    });
+  }
+
   // Encrypt with Double Ratchet
-  const { envelope, updatedSession } = await ratchetEncrypt(session, plaintext);
+  const { envelope, updatedSession } = await ratchetEncrypt(session, ratchetPlaintext);
   await saveRatchetSession(updatedSession);
 
-  // Include imageUrl and replyTo in the relay payload so the recipient receives them.
-  // Both fields are non-secret metadata: imageUrl is already public (Supabase Storage),
-  // and replyTo contains only the snippet/sender visible to both parties anyway.
-  // They travel inside the outer JSON alongside the encrypted envelope.
+  // replyTo is non-secret metadata (snippet + sender info already known to both parties)
+  // and is included outside the ratchet ciphertext for relay routing.
   const extras: Record<string, unknown> = {};
-  if (imageUrl) extras.imageUrl = imageUrl;
   if (replyTo) extras.replyTo = replyTo;
   const payload = JSON.stringify(Object.keys(extras).length ? { ...envelope, ...extras } : envelope);
 
@@ -129,7 +208,9 @@ export async function sendEncryptedMessage(
     timestamp: Date.now(),
     status: 'sent',
     isOwn: true,
-    imageUrl: imageUrl ?? null,
+    imageUrl: null,
+    imageStoragePath: imageAttachment?.storagePath ?? null,
+    imageKeyBase64: imageAttachment?.imageKeyBase64 ?? null,
     replyTo: replyTo ?? null,
   };
 
@@ -165,10 +246,24 @@ export async function receiveAndDecryptMessage(
     }
 
     // Decrypt with Double Ratchet
-    const { plaintext, updatedSession } = await ratchetDecrypt(session, envelope);
+    const { plaintext: decrypted, updatedSession } = await ratchetDecrypt(session, envelope);
     await saveRatchetSession(updatedSession);
 
-    type PayloadExtras = { imageUrl?: string; replyTo?: import('@/types/types').ReplyTo };
+    // If the decrypted payload is a v2 structured message, extract text and image metadata.
+    // Image storage path and AES key travelled securely inside the ratchet ciphertext.
+    let content = decrypted;
+    let imageStoragePath: string | null = null;
+    let imageKeyBase64: string | null = null;
+    try {
+      const parsed: { v?: number; t?: string; isp?: string; ik?: string } = JSON.parse(decrypted);
+      if (parsed.v === 2) {
+        content = parsed.t ?? '';
+        imageStoragePath = parsed.isp ?? null;
+        imageKeyBase64 = parsed.ik ?? null;
+      }
+    } catch { /* plain-text message — leave content unchanged */ }
+
+    type PayloadExtras = { replyTo?: import('@/types/types').ReplyTo };
     const extras = envelope as EncryptedEnvelope & PayloadExtras;
 
     const localMsg: LocalMessage = {
@@ -176,11 +271,13 @@ export async function receiveAndDecryptMessage(
       conversationId,
       senderId: relayMessage.sender_id,
       senderUsername,
-      content: plaintext,
+      content,
       timestamp: new Date(relayMessage.created_at).getTime(),
       status: 'delivered',
       isOwn: relayMessage.sender_id === myUserId,
-      imageUrl: extras.imageUrl ?? null,
+      imageUrl: null,
+      imageStoragePath,
+      imageKeyBase64,
       replyTo: extras.replyTo ?? null,
     };
 
