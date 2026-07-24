@@ -52,6 +52,7 @@ export function CustomThemeEditor({
   const [sidebarColor, setSidebarColor] = useState(initialTheme?.config.sidebarColor ?? '#161a18');
   const [cardColor, setCardColor] = useState(initialTheme?.config.cardColor ?? '#232a26');
   const [glassmorphism, setGlassmorphism] = useState(initialTheme?.config.glassmorphism ?? false);
+  const [glassmorphismUi, setGlassmorphismUi] = useState(initialTheme?.config.glassmorphismUi ?? false);
   const [isDragging, setIsDragging] = useState(false);
   
   // Auto-detect device for default preview mode
@@ -60,6 +61,7 @@ export function CustomThemeEditor({
   // Use a ref to keep track of the current theme ID to avoid regenerating random UUIDs on every render
   const themeIdRef = useRef(initialTheme?.id ?? `custom_${crypto.randomUUID()}`);
   const statusRef = useRef(initialTheme?.status ?? 'draft');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const handleAutosave = async () => {
@@ -81,7 +83,8 @@ export function CustomThemeEditor({
           headerColor,
           sidebarColor,
           cardColor,
-          glassmorphism
+          glassmorphism,
+          glassmorphismUi
         }
       };
       await saveCustomTheme(theme);
@@ -94,8 +97,19 @@ export function CustomThemeEditor({
         handleAutosave();
       }
     }, 500);
+
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'THEME_PREVIEW',
+        theme: {
+          id: 'preview',
+          name, description, mode, isPublic, msgColor, recvColor, sendColor, bgColor, bgType, font, bgImage, headerColor, sidebarColor, cardColor, glassmorphism, glassmorphismUi
+        }
+      }, '*');
+    }
+
     return () => clearTimeout(timer);
-  }, [name, description, mode, isPublic, msgColor, recvColor, sendColor, bgColor, bgType, font, bgImage, headerColor, sidebarColor, cardColor, glassmorphism]);
+  }, [name, description, mode, isPublic, msgColor, recvColor, sendColor, bgColor, bgType, font, bgImage, headerColor, sidebarColor, cardColor, glassmorphism, glassmorphismUi]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -227,76 +241,12 @@ export function CustomThemeEditor({
             </div>
             
             <div className="w-full flex justify-center bg-muted/20 rounded-xl p-4 border border-border">
-              <div 
+              <iframe
+                src="/"
+                ref={iframeRef}
                 className={`rounded-xl border border-border shadow-md overflow-hidden flex relative transition-all ${previewMode === 'desktop' ? 'w-full aspect-video flex-row' : 'w-full max-w-[260px] aspect-[9/16] flex-col mx-auto'}`}
-                style={{
-                  backgroundColor: bgType === 'color' ? bgColor : undefined,
-                  backgroundImage: bgType === 'image' && bgImage ? `url(${bgImage})` : undefined,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  fontFamily: font
-                }}
-              >
-                {previewMode === 'desktop' && (
-                  <div 
-                    className={`w-1/3 border-r border-border/20 shrink-0 ${glassmorphism ? 'backdrop-blur-md !border-white/20' : ''}`} 
-                    style={{ backgroundColor: glassmorphism ? `${sidebarColor}40` : sidebarColor }}
-                  >
-                    <div className="h-10 border-b border-border/20 px-3 flex items-center">
-                      <div className="w-20 h-4 rounded bg-foreground/20" />
-                    </div>
-                    <div className="p-3">
-                      <div className="flex items-center gap-2 p-2 rounded-md bg-foreground/5">
-                        <img src="/icon-512x512.png" className="w-8 h-8 rounded-full object-cover" alt="Sylva" />
-                        <div className="flex-1">
-                          <div className="h-3 w-16 rounded bg-foreground/30 mb-1" />
-                          <div className="h-2 w-24 rounded bg-foreground/20" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="flex-1 flex flex-col min-w-0">
-                  <div 
-                    className={`h-12 border-b border-border flex items-center px-3 gap-3 shrink-0 ${glassmorphism ? 'backdrop-blur-md !border-white/20' : ''}`} 
-                    style={{ backgroundColor: glassmorphism ? `${headerColor}40` : headerColor }}
-                  >
-                    <img src="/icon-512x512.png" className="w-8 h-8 rounded-full object-cover shadow-sm" alt="Sylva" />
-                    <div className="font-semibold text-sm drop-shadow-sm mix-blend-luminosity">Sylva</div>
-                  </div>
-                  
-                  <div className="flex-1 p-3 flex flex-col gap-3 justify-end overflow-hidden">
-                    <div 
-                      className={`self-start max-w-[80%] p-2.5 rounded-2xl rounded-bl-sm text-xs shadow-sm ${glassmorphism ? 'backdrop-blur-md !bg-white/10 !border !border-white/20' : 'border border-border/5'}`} 
-                      style={{ 
-                        backgroundColor: glassmorphism ? `${recvColor}40` : recvColor,
-                        color: glassmorphism ? '#fff' : undefined
-                      }}
-                    >
-                      Hello! Nice theme!
-                    </div>
-                    <div 
-                      className={`self-end max-w-[80%] p-2.5 rounded-2xl rounded-br-sm text-xs shadow-sm ${glassmorphism ? 'backdrop-blur-md !bg-white/10 !border !border-white/20' : ''}`} 
-                      style={{ 
-                        backgroundColor: glassmorphism ? `${msgColor}40` : msgColor,
-                        color: '#fff'
-                      }}
-                    >
-                      Thanks, I customized it myself!
-                    </div>
-                  </div>
-                  
-                  <div 
-                    className={`h-14 border-t border-border flex items-center px-3 gap-2 shrink-0 ${glassmorphism ? 'backdrop-blur-md !border-white/20' : ''}`} 
-                    style={{ backgroundColor: glassmorphism ? `${cardColor}40` : cardColor }}
-                  >
-                    <div className="flex-1 h-9 rounded-full bg-foreground/10 border border-border/30" />
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0" style={{ backgroundColor: sendColor }}>
-                      <Send className="w-4 h-4 ml-0.5" />
-                    </div>
-                  </div>
-                </div>
-              </div>
+                title="Theme Preview"
+              />
             </div>
           </div>
           
@@ -408,12 +358,25 @@ export function CustomThemeEditor({
             <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border border-border">
               <div className="space-y-0.5">
                 <Label>Glassmorphism Bubbles</Label>
-                <p className="text-[10px] text-muted-foreground">Applies a frosted glass effect to sent messages.</p>
+                <p className="text-[10px] text-muted-foreground">Applies a frosted glass effect to all message bubbles.</p>
               </div>
               <input 
                 type="checkbox" 
                 checked={glassmorphism} 
                 onChange={e => setGlassmorphism(e.target.checked)} 
+                className="w-5 h-5 accent-primary rounded cursor-pointer" 
+              />
+            </div>
+
+            <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border border-border">
+              <div className="space-y-0.5">
+                <Label>Glassmorphism UI</Label>
+                <p className="text-[10px] text-muted-foreground">Applies a frosted glass effect to Sidebar, Header, Cards, and other UI components.</p>
+              </div>
+              <input 
+                type="checkbox" 
+                checked={glassmorphismUi} 
+                onChange={e => setGlassmorphismUi(e.target.checked)} 
                 className="w-5 h-5 accent-primary rounded cursor-pointer" 
               />
             </div>

@@ -1751,7 +1751,7 @@ export function ChatArea({
           </div>
           <div className="flex flex-col gap-2 text-xs text-muted-foreground pt-2">
             {[
-              { icon: <Shield className="w-3.5 h-3.5 text-primary shrink-0" />, label: 'End-to-end encrypted with Signal Double Ratchet' },
+              { icon: <Shield className="w-3.5 h-3.5 text-primary shrink-0" />, label: 'End-to-end encrypted with Double Ratchet' },
               { icon: <Lock className="w-3.5 h-3.5 text-primary shrink-0" />, label: 'Messages stored only in your local encrypted vault' },
               { icon: <Key className="w-3.5 h-3.5 text-primary shrink-0" />, label: 'Zero-knowledge relay — server sees only ciphertext' },
             ].map(({ icon, label }) => (

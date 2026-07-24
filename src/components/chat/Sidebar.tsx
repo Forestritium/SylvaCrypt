@@ -131,6 +131,7 @@ function SidebarContent({
   const [dndEnabled, setDndEnabled] = useState(() => isDND());
   // Contact avatars: map of userId → { url, private }
   const [contactAvatars, setContactAvatars] = useState<Record<string, { url: string | null; private: boolean }>>({});
+  const [lastMessageTimes, setLastMessageTimes] = useState<Record<string, number>>({});
 
   // ── Contact search / filter ────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
@@ -165,7 +166,14 @@ function SidebarContent({
         }
         setContactAvatars(map);
       });
-  }, [contacts]);
+
+    // Fetch last message times for sorting
+    import('@/lib/dbStore').then((mod: any) => {
+      if (mod.getLastMessageTimes) {
+        mod.getLastMessageTimes(currentUserId).then((times: Record<string, number>) => setLastMessageTimes(times));
+      }
+    });
+  }, [contacts, currentUserId]);
 
   const handleSelectContact = (contact: Contact) => {
     const convId = makeConversationId(currentUserId, contact.id);
@@ -631,7 +639,11 @@ function SidebarContent({
                     .sort((a, b) => {
                       const ua = unreadCounts[makeConversationId(currentUserId, a.id)] ?? 0;
                       const ub = unreadCounts[makeConversationId(currentUserId, b.id)] ?? 0;
-                      return ub - ua; // unread contacts rise to top
+                      if (ub !== ua) return ub - ua; // unread contacts rise to top
+                      
+                      const tA = lastMessageTimes[makeConversationId(currentUserId, a.id)] ?? a.addedAt;
+                      const tB = lastMessageTimes[makeConversationId(currentUserId, b.id)] ?? b.addedAt;
+                      return tB - tA; // recently talked contacts rise to top
                     })
                     .map(contact => {
                     const convId = makeConversationId(currentUserId, contact.id);

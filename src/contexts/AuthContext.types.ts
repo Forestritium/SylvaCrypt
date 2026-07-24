@@ -31,7 +31,7 @@ export interface AuthContextType {
   refreshProfile: () => Promise<void>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   updatePublicKey: (publicKey: string) => Promise<void>;
-  updateBio: (bio: string) => Promise<{ error: Error | null }>;
+  updateBio: (bio: string, bioPrivate: boolean) => Promise<{ error: Error | null }>;
   deleteAccount: (password: string) => Promise<{ error: Error | null }>;
   changeUsername: (newUsername: string) => Promise<{ error: Error | null; daysRemaining?: number }>;
   updateAvatar: (file: File) => Promise<{ error: Error | null; url?: string }>;

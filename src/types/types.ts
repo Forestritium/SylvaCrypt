@@ -9,6 +9,7 @@ export interface Profile {
   role: UserRole;
   public_key: string | null; // base64-encoded X25519 public key (32 bytes raw)
   bio: string | null;
+  bio_private: boolean;                 // when true, hide bio from other users
   created_at: string;
   username_last_changed: string | null; // ISO timestamp of last username change
   avatar_url: string | null;            // public Storage URL for profile picture

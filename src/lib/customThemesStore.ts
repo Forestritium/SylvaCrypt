@@ -23,6 +23,7 @@ export type CustomTheme = {
     sidebarColor?: string;
     cardColor?: string;
     glassmorphism?: boolean;
+    glassmorphismUi?: boolean;
   };
 };
 

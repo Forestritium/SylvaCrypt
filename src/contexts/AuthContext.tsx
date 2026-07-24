@@ -489,12 +489,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.from('profiles').update({ public_key: publicKey }).eq('id', user.id);
   };
 
-  const updateBio = async (bio: string): Promise<{ error: Error | null }> => {
+  const updateBio = async (bio: string, bioPrivate: boolean): Promise<{ error: Error | null }> => {
     try {
       if (!user) throw new Error('Not authenticated');
       const { error } = await supabase
         .from('profiles')
-        .update({ bio: bio.trim() || null })
+        .update({ bio: bio.trim() || null, bio_private: bioPrivate })
         .eq('id', user.id);
       if (error) throw error;
       await refreshProfile();

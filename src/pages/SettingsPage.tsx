@@ -56,6 +56,7 @@ export default function SettingsPage() {
 
   // Bio
   const [bioInput, setBioInput] = useState(profile?.bio ?? '');
+  const [bioPrivate, setBioPrivate] = useState(profile?.bio_private ?? false);
   const [savingBio, setSavingBio] = useState(false);
 
   // Username
@@ -112,9 +113,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setBioInput(profile?.bio ?? '');
+    setBioPrivate(profile?.bio_private ?? false);
     setAvatarPrivate(profile?.avatar_private ?? false);
     setDiscoverable(profile?.discoverable ?? true);
-  }, [profile?.bio, profile?.avatar_private, profile?.discoverable]);
+  }, [profile?.bio, profile?.bio_private, profile?.avatar_private, profile?.discoverable]);
 
   useEffect(() => {
     if (section === 'blocklist') fetchBlockedUsers().then(setBlockedUsers);
@@ -155,7 +157,7 @@ export default function SettingsPage() {
   // ── Bio ───────────────────────────────────────────────────────────────────
   const handleSaveBio = async () => {
     setSavingBio(true);
-    const { error } = await updateBio(bioInput);
+    const { error } = await updateBio(bioInput, bioPrivate);
     setSavingBio(false);
     if (error) toast.error(error.message || 'Failed to update bio.');
     else { toast.success('Bio updated.'); setSection('main'); }
@@ -406,8 +408,24 @@ export default function SettingsPage() {
             />
             <p className="text-xs text-muted-foreground mt-1 text-right">{bioInput.length}/160</p>
           </div>
+          <button onClick={() => setBioPrivate(!bioPrivate)}
+            className={`flex items-center gap-2.5 w-full px-4 py-3 rounded-xl border transition-colors ${
+              bioPrivate
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                : 'bg-muted border-border text-foreground hover:bg-muted/80'
+            }`}>
+            {bioPrivate ? <Lock className="w-4 h-4 shrink-0" /> : <Unlock className="w-4 h-4 shrink-0" />}
+            <div className="flex-1 text-left">
+              <p className="text-sm font-medium leading-tight">
+                {bioPrivate ? 'Bio is Private' : 'Bio is Public'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {bioPrivate ? 'Only you can see your bio' : 'Your contacts can see your bio'}
+              </p>
+            </div>
+          </button>
           <button onClick={handleSaveBio} disabled={savingBio}
-            className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
+            className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 mt-2">
             {savingBio ? 'Saving...' : 'Save Bio'}
           </button>
         </div>
@@ -841,11 +859,11 @@ export default function SettingsPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Roadmap</p>
                 <div className="space-y-1.5">
                   {[
-                    { label: 'Full X3DH key exchange (Signal Protocol prekeys)', done: true },
+                    { label: 'Full X3DH key exchange (Extended prekeys)', done: true },
                     { label: 'Sealed sender (hide sender identity from relay)', done: true },
                     { label: 'Post-quantum hybrid encryption (ML-KEM-768 / CRYSTALS-Kyber)', done: true },
                     { label: 'Multi-device support with per-device key pairs', done: true },
-                    { label: 'Per-ratchet-step header key rotation (full Signal sealed sender)', done: false },
+                    { label: 'Per-ratchet-step header key rotation (Full sealed sender)', done: true },
                     { label: 'Group messaging with sender keys', done: false },
                   ].map(item => (
                     <div key={item.label} className="flex items-start gap-2">
@@ -1192,7 +1210,7 @@ export default function SettingsPage() {
               <div className="space-y-1.5">
                 {[
                   ['Ctrl + K', 'Focus search'],
-                  ['Ctrl + N', 'Add new contact'],
+                  ['Ctrl + Alt + N', 'Add new contact'],
                   ['Ctrl + Shift + D', 'Toggle light/dark theme'],
                   ['Ctrl + Shift + M', 'Focus message input'],
                   ['Ctrl + ,', 'Open settings'],

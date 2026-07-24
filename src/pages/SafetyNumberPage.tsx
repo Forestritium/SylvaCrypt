@@ -1,5 +1,5 @@
 /**
- * SafetyNumberPage — dedicated Signal-style safety number comparison screen.
+ * SafetyNumberPage — dedicated secure safety number comparison screen.
  *
  * Accessed via /safety-number/:contactId
  * Shows the 60-digit safety number as a grid of 12 blocks (5 digits each),

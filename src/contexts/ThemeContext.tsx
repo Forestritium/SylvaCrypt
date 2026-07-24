@@ -88,6 +88,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setTheme(next);
   };
 
+  const [previewCustomTheme, setPreviewCustomTheme] = useState<any>(null);
+
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'THEME_PREVIEW') {
+        setPreviewCustomTheme(e.data.theme);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove('dark', 'theme-mint', 'theme-mint-dark', 'theme-ember', 'theme-neon-noir');
@@ -96,25 +108,47 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const oldStyle = document.getElementById('sc-custom-theme-style');
     if (oldStyle) oldStyle.remove();
 
-    if (theme.startsWith('custom_')) {
-      getCustomTheme(theme).then(ct => {
+    if (previewCustomTheme || theme.startsWith('custom_')) {
+      const applyTheme = (ct: any) => {
         if (!ct) return;
-        const bgHsl = hexToHSLString(ct.config.backgroundColor);
-        const msgHsl = hexToHSLString(ct.config.messageBubbleColor);
-        const sendHsl = hexToHSLString(ct.config.sendButtonColor);
         
-        const isBgDark = isColorDark(ct.config.backgroundColor);
-        const isMsgDark = isColorDark(ct.config.messageBubbleColor);
-        const isSendDark = isColorDark(ct.config.sendButtonColor);
-        const isHeaderDark = ct.config.headerColor ? isColorDark(ct.config.headerColor) : isBgDark;
-        const isSidebarDark = ct.config.sidebarColor ? isColorDark(ct.config.sidebarColor) : isBgDark;
+        const config = ct.id === 'preview' ? {
+          backgroundColor: ct.bgColor,
+          messageBubbleColor: ct.msgColor,
+          sendButtonColor: ct.sendColor,
+          headerColor: ct.headerColor,
+          sidebarColor: ct.sidebarColor,
+          cardColor: ct.cardColor,
+          receivedBubbleColor: ct.recvColor,
+          backgroundType: ct.bgType,
+          backgroundImageDataUrl: ct.bgImage,
+          fontFamily: ct.font,
+          glassmorphism: ct.glassmorphism,
+          glassmorphismUi: ct.glassmorphismUi
+        } : ct.config;
+
+        // Force the color mode of the preview theme
+        if (ct.mode) {
+          root.classList.remove('light', 'dark');
+          root.classList.add(ct.mode);
+        }
+
+        const bgHsl = hexToHSLString(config.backgroundColor);
+        const msgHsl = hexToHSLString(config.messageBubbleColor);
+        const sendHsl = hexToHSLString(config.sendButtonColor);
         
-        const headerHsl = ct.config.headerColor ? hexToHSLString(ct.config.headerColor) : bgHsl;
-        const sidebarHsl = ct.config.sidebarColor ? hexToHSLString(ct.config.sidebarColor) : bgHsl;
-        const cardHsl = ct.config.cardColor ? hexToHSLString(ct.config.cardColor) : (isBgDark ? '0 0% 10% / 0.8' : '0 0% 100% / 0.8');
+        const isBgDark = isColorDark(config.backgroundColor);
+        const isMsgDark = isColorDark(config.messageBubbleColor);
+        const isSendDark = isColorDark(config.sendButtonColor);
+        const isHeaderDark = config.headerColor ? isColorDark(config.headerColor) : isBgDark;
+        const isSidebarDark = config.sidebarColor ? isColorDark(config.sidebarColor) : isBgDark;
         
-        const recvHsl = ct.config.receivedBubbleColor ? hexToHSLString(ct.config.receivedBubbleColor) : cardHsl;
-        const isRecvDark = ct.config.receivedBubbleColor ? isColorDark(ct.config.receivedBubbleColor) : isBgDark;
+        const headerHsl = config.headerColor ? hexToHSLString(config.headerColor) : bgHsl;
+        const sidebarHsl = config.sidebarColor ? hexToHSLString(config.sidebarColor) : bgHsl;
+        const cardHsl = config.cardColor ? hexToHSLString(config.cardColor) : (isBgDark ? '0 0% 10% / 0.8' : '0 0% 100% / 0.8');
+        
+        const recvHsl = config.receivedBubbleColor ? hexToHSLString(config.receivedBubbleColor) : cardHsl;
+        const isRecvDark = config.receivedBubbleColor ? isColorDark(config.receivedBubbleColor) : isBgDark;
         const recvForeground = isRecvDark ? '0 0% 100%' : '220 13% 13%';
         
         const foreground = isBgDark ? '0 0% 100%' : '220 13% 13%';
@@ -133,13 +167,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         styleEl.id = 'sc-custom-theme-style';
         
         let bgImgCss = '';
-        if (ct.config.backgroundType === 'image' && ct.config.backgroundImageDataUrl) {
-          bgImgCss = `background-image: url("${ct.config.backgroundImageDataUrl}"); background-size: cover; background-position: center; background-attachment: fixed;`;
-        } else if (ct.config.backgroundType === 'color' || !ct.config.backgroundType) {
+        if (config.backgroundType === 'image' && config.backgroundImageDataUrl) {
+          bgImgCss = `background-image: url("${config.backgroundImageDataUrl}"); background-size: cover; background-position: center; background-attachment: fixed;`;
+        } else if (config.backgroundType === 'color' || !config.backgroundType) {
           bgImgCss = `background-color: hsl(${bgHsl});`;
         }
         
-        const getGlassCss = (baseHsl: string, fgHsl: string) => ct.config.glassmorphism ? `
+        const getGlassCss = (baseHsl: string, fgHsl: string, isUi: boolean) => (isUi ? config.glassmorphismUi : config.glassmorphism) ? `
           backdrop-filter: blur(12px) !important;
           background-color: hsl(${baseHsl} / 0.15) !important;
           border: 1px solid ${isBgDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'} !important;
@@ -167,7 +201,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             --bubble-recv-text: hsl(${recvForeground});
             --bubble-recv-border: transparent;
             
-            --font-sans: ${ct.config.fontFamily}, sans-serif;
+            --font-sans: ${config.fontFamily || 'Inter'}, sans-serif;
           }
           body {
             ${bgImgCss}
@@ -175,27 +209,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           }
           .bg-card {
             background-color: hsl(${cardHsl});
-            ${ct.config.glassmorphism ? getGlassCss(cardHsl, foreground) : 'backdrop-filter: blur(10px);'}
+            ${config.glassmorphismUi ? getGlassCss(cardHsl, foreground, true) : 'backdrop-filter: blur(10px);'}
           }
           header, .border-b.bg-card {
             background-color: hsl(${headerHsl}) !important;
             color: hsl(${headerForeground});
-            ${getGlassCss(headerHsl, headerForeground)}
+            ${getGlassCss(headerHsl, headerForeground, true)}
           }
           aside, nav {
             background-color: hsl(${sidebarHsl}) !important;
             color: hsl(${sidebarForeground});
-            ${getGlassCss(sidebarHsl, sidebarForeground)}
+            ${getGlassCss(sidebarHsl, sidebarForeground, true)}
           }
           .bubble-sent {
-            ${getGlassCss(msgHsl, msgForeground)}
+            ${getGlassCss(msgHsl, msgForeground, false)}
           }
           .bubble-received {
-            ${getGlassCss(recvHsl, recvForeground)}
+            ${getGlassCss(recvHsl, recvForeground, false)}
           }
         `;
         document.head.appendChild(styleEl);
-      });
+      };
+
+      if (previewCustomTheme) {
+        applyTheme(previewCustomTheme);
+      } else {
+        getCustomTheme(theme).then(applyTheme);
+      }
     } else {
       if (theme === 'dark') {
         root.classList.add('dark');

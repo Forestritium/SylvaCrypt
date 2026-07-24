@@ -3,7 +3,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* SylvaCrypt Design System — Clean Messenger Theme (Signal / Telegram style) */
+/* SylvaCrypt Design System — Clean Messenger Theme (Secure / Telegram style) */
 @layer base {
   /* ── Light Mode (default) ── */
   :root {

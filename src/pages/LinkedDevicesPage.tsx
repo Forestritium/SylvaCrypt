@@ -1,5 +1,5 @@
 /**
- * Linked Devices page — Signal-style multi-device management.
+ * Linked Devices page — Enterprise-grade multi-device management.
  *
  * Primary device:
  *   - Sees all registered devices with name, fingerprint, added date.
@@ -11,7 +11,7 @@
  *   - Can remove itself (de-register).
  *
  * Key fingerprint: SHA-256 of the device's X25519 public key, displayed as
- * space-separated hex groups (same format as Signal safety numbers).
+ * space-separated hex groups (same format as standard safety numbers).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -200,7 +200,7 @@ export default function LinkedDevicesPage() {
           <div className="bg-primary/8 border border-primary/20 rounded-2xl px-4 py-3.5 flex gap-3">
             <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">Signal-grade multi-device</p>
+              <p className="text-sm font-semibold text-foreground">Enterprise-grade multi-device</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Each device has its own X25519 identity key and independent Double Ratchet sessions.
                 Messages are encrypted separately for every linked device — the server never sees plaintext.

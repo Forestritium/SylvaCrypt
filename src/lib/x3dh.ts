@@ -2,7 +2,7 @@
  * X3DH + Post-Quantum Hybrid Key Agreement for SylvaCrypt
  * ─────────────────────────────────────────────────────────
  *
- * Protocol: Extended Triple Diffie-Hellman (Signal X3DH) with an optional
+ * Protocol: Extended Triple Diffie-Hellman (X3DH) with an optional
  * ML-KEM-768 (CRYSTALS-Kyber, FIPS 203) hybrid layer for post-quantum security.
  *
  * Classical path  (X3DH):
@@ -340,7 +340,7 @@ export async function fetchPrekeyBundle(recipientId: string, deviceId?: string |
 // ─── KDF helpers ───────────────────────────────────────────────────────────────
 
 const ZEROS32 = new Uint8Array(32);
-// Signal spec: pad input with 0xFF bytes before the DH outputs (same length as output)
+// Protocol spec: pad input with 0xFF bytes before the DH outputs (same length as output)
 const F = new Uint8Array(32).fill(0xff);
 
 /** Concatenate multiple Uint8Arrays */

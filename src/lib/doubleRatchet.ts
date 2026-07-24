@@ -1,5 +1,5 @@
 /**
- * Signal Protocol Double Ratchet — v2.5.0 with NHK header-key rotation.
+ * Double Ratchet — v2.5.0 with NHK header-key rotation.
  * X25519 + HKDF-SHA256 + AES-256-GCM.
  *
  * Each message gets a unique derived key → full forward secrecy.

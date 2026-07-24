@@ -3,7 +3,7 @@
  *
  * Shortcuts:
  *   Ctrl+K / Cmd+K          → focus the contact/conversation search input
- *   Ctrl+N / Cmd+N          → open the Add Contact dialog
+ *   Ctrl+Alt+N / Cmd+Alt+N  → open the Add Contact dialog
  *   Ctrl+Shift+D / Cmd+Shift+D → toggle light/dark theme
  *   Ctrl+Shift+M / Cmd+Shift+M → focus the active chat message input
  *   Ctrl+Comma / Cmd+Comma  → open Settings
@@ -47,7 +47,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers): void {
         handlers.onSearch?.();
         return;
       }
-      if (mod && e.key === 'n') {
+      if (mod && e.altKey && (e.key === 'n' || e.key === 'N')) {
         e.preventDefault();
         handlers.onNewContact?.();
         return;

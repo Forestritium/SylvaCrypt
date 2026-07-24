@@ -31,6 +31,22 @@ async function encryptContent(plaintext: string): Promise<string> {
 
 /**
  * Decrypt a stored content blob back to plaintext.
+export async function getLastMessageTimes(ownerId: string): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('conversation_id, created_at')
+    .eq('owner_id', ownerId)
+    .order('created_at', { ascending: false });
+  if (error || !data) return {};
+  const times: Record<string, number> = {};
+  for (const row of data) {
+    if (!times[row.conversation_id]) {
+      times[row.conversation_id] = new Date(row.created_at).getTime();
+    }
+  }
+  return times;
+}
+
  * Handles legacy plaintext rows (those that start with "__plain__:" or were
  * stored before encryption was introduced) gracefully.
  */
