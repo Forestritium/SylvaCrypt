@@ -183,6 +183,21 @@ export function CustomThemeEditor({
     onClose();
   };
 
+  const handleCancel = async () => {
+    if (window.confirm("Are you sure you want to discard your changes?")) {
+      if (initialTheme) {
+        // Revert to initialTheme
+        await saveCustomTheme(initialTheme);
+      } else {
+        // Delete the newly created draft
+        const { deleteCustomTheme } = await import('@/lib/customThemesStore');
+        await deleteCustomTheme(themeIdRef.current);
+      }
+      onSave(); // Trigger a reload of themes
+      onClose();
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-[calc(100%-2rem)] md:max-w-4xl overflow-y-auto max-h-[90dvh]">
@@ -211,9 +226,9 @@ export function CustomThemeEditor({
               </div>
             </div>
             
-            <div className={`w-full flex justify-center bg-muted/20 rounded-xl p-4 border border-border ${previewMode === 'desktop' ? 'aspect-video' : ''}`}>
+            <div className="w-full flex justify-center bg-muted/20 rounded-xl p-4 border border-border">
               <div 
-                className={`rounded-xl border border-border shadow-md overflow-hidden flex relative transition-all ${previewMode === 'desktop' ? 'w-full h-full flex-row' : 'w-full max-w-[260px] aspect-[9/16] flex-col mx-auto'}`}
+                className={`rounded-xl border border-border shadow-md overflow-hidden flex relative transition-all ${previewMode === 'desktop' ? 'w-full aspect-video flex-row' : 'w-full max-w-[260px] aspect-[9/16] flex-col mx-auto'}`}
                 style={{
                   backgroundColor: bgType === 'color' ? bgColor : undefined,
                   backgroundImage: bgType === 'image' && bgImage ? `url(${bgImage})` : undefined,
@@ -223,7 +238,10 @@ export function CustomThemeEditor({
                 }}
               >
                 {previewMode === 'desktop' && (
-                  <div className="w-1/3 border-r border-border/20 shrink-0" style={{ backgroundColor: sidebarColor }}>
+                  <div 
+                    className={`w-1/3 border-r border-border/20 shrink-0 ${glassmorphism ? 'backdrop-blur-md !border-white/20' : ''}`} 
+                    style={{ backgroundColor: glassmorphism ? `${sidebarColor}40` : sidebarColor }}
+                  >
                     <div className="h-10 border-b border-border/20 px-3 flex items-center">
                       <div className="w-20 h-4 rounded bg-foreground/20" />
                     </div>
@@ -239,7 +257,10 @@ export function CustomThemeEditor({
                   </div>
                 )}
                 <div className="flex-1 flex flex-col min-w-0">
-                  <div className="h-12 border-b border-border flex items-center px-3 gap-3 shrink-0" style={{ backgroundColor: headerColor }}>
+                  <div 
+                    className={`h-12 border-b border-border flex items-center px-3 gap-3 shrink-0 ${glassmorphism ? 'backdrop-blur-md !border-white/20' : ''}`} 
+                    style={{ backgroundColor: glassmorphism ? `${headerColor}40` : headerColor }}
+                  >
                     <img src="/icon-512x512.png" className="w-8 h-8 rounded-full object-cover shadow-sm" alt="Sylva" />
                     <div className="font-semibold text-sm drop-shadow-sm mix-blend-luminosity">Sylva</div>
                   </div>
@@ -248,8 +269,8 @@ export function CustomThemeEditor({
                     <div 
                       className={`self-start max-w-[80%] p-2.5 rounded-2xl rounded-bl-sm text-xs shadow-sm ${glassmorphism ? 'backdrop-blur-md !bg-white/10 !border !border-white/20' : 'border border-border/5'}`} 
                       style={{ 
-                        backgroundColor: glassmorphism ? 'transparent' : recvColor,
-                        color: glassmorphism ? '#fff' : undefined // In real app depends on contrast, we mock it here
+                        backgroundColor: glassmorphism ? `${recvColor}40` : recvColor,
+                        color: glassmorphism ? '#fff' : undefined
                       }}
                     >
                       Hello! Nice theme!
@@ -257,15 +278,18 @@ export function CustomThemeEditor({
                     <div 
                       className={`self-end max-w-[80%] p-2.5 rounded-2xl rounded-br-sm text-xs shadow-sm ${glassmorphism ? 'backdrop-blur-md !bg-white/10 !border !border-white/20' : ''}`} 
                       style={{ 
-                        backgroundColor: glassmorphism ? 'transparent' : msgColor,
-                        color: '#fff' // Sent bubbles are typically white text
+                        backgroundColor: glassmorphism ? `${msgColor}40` : msgColor,
+                        color: '#fff'
                       }}
                     >
                       Thanks, I customized it myself!
                     </div>
                   </div>
                   
-                  <div className="h-14 border-t border-border flex items-center px-3 gap-2 shrink-0" style={{ backgroundColor: cardColor }}>
+                  <div 
+                    className={`h-14 border-t border-border flex items-center px-3 gap-2 shrink-0 ${glassmorphism ? 'backdrop-blur-md !border-white/20' : ''}`} 
+                    style={{ backgroundColor: glassmorphism ? `${cardColor}40` : cardColor }}
+                  >
                     <div className="flex-1 h-9 rounded-full bg-foreground/10 border border-border/30" />
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm shrink-0" style={{ backgroundColor: sendColor }}>
                       <Send className="w-4 h-4 ml-0.5" />
@@ -408,7 +432,7 @@ export function CustomThemeEditor({
         </div>
         
         <div className="flex justify-end gap-2 pt-4 border-t border-border mt-2">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
           <Button variant="secondary" onClick={() => handleSave(true)}>

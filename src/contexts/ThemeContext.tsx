@@ -139,12 +139,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           bgImgCss = `background-color: hsl(${bgHsl});`;
         }
         
-        const glassCss = ct.config.glassmorphism ? `
+        const getGlassCss = (baseHsl: string, fgHsl: string) => ct.config.glassmorphism ? `
           backdrop-filter: blur(12px) !important;
-          background-color: ${isBgDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'} !important;
+          background-color: hsl(${baseHsl} / 0.15) !important;
           border: 1px solid ${isBgDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'} !important;
           box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1) !important;
-          color: hsl(${foreground}) !important;
+          color: hsl(${fgHsl}) !important;
         ` : '';
 
         styleEl.innerHTML = `
@@ -175,18 +175,23 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           }
           .bg-card {
             background-color: hsl(${cardHsl});
-            backdrop-filter: blur(10px);
+            ${ct.config.glassmorphism ? getGlassCss(cardHsl, foreground) : 'backdrop-filter: blur(10px);'}
           }
           header, .border-b.bg-card {
             background-color: hsl(${headerHsl}) !important;
             color: hsl(${headerForeground});
+            ${getGlassCss(headerHsl, headerForeground)}
           }
           aside, nav {
             background-color: hsl(${sidebarHsl}) !important;
             color: hsl(${sidebarForeground});
+            ${getGlassCss(sidebarHsl, sidebarForeground)}
           }
-          .bubble-sent, .bubble-received {
-            ${glassCss}
+          .bubble-sent {
+            ${getGlassCss(msgHsl, msgForeground)}
+          }
+          .bubble-received {
+            ${getGlassCss(recvHsl, recvForeground)}
           }
         `;
         document.head.appendChild(styleEl);
