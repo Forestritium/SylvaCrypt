@@ -37,21 +37,25 @@ export function CustomThemeEditor({
   onSave: () => void; 
 }) {
   const [name, setName] = useState(initialTheme?.name ?? '');
+  const [description, setDescription] = useState(initialTheme?.description ?? '');
+  const [mode, setMode] = useState<'light' | 'dark'>(initialTheme?.mode ?? 'dark');
   const [isPublic, setIsPublic] = useState(initialTheme?.isPublic ?? false);
-  const [msgColor, setMsgColor] = useState(initialTheme?.config.messageBubbleColor ?? '#0088ff');
-  const [recvColor, setRecvColor] = useState(initialTheme?.config.receivedBubbleColor ?? '#ffffff');
-  const [sendColor, setSendColor] = useState(initialTheme?.config.sendButtonColor ?? '#0088ff');
-  const [bgColor, setBgColor] = useState(initialTheme?.config.backgroundColor ?? '#ffffff');
+  const [msgColor, setMsgColor] = useState(initialTheme?.config.messageBubbleColor ?? '#4a5c50');
+  const [recvColor, setRecvColor] = useState(initialTheme?.config.receivedBubbleColor ?? '#232a26');
+  const [sendColor, setSendColor] = useState(initialTheme?.config.sendButtonColor ?? '#6b8a75');
+  const [bgColor, setBgColor] = useState(initialTheme?.config.backgroundColor ?? '#1a1f1c');
   const [font, setFont] = useState(initialTheme?.config.fontFamily ?? 'Inter');
   const [bgImage, setBgImage] = useState<string | undefined>(initialTheme?.config.backgroundImageDataUrl);
   const [bgType, setBgType] = useState<'color' | 'image'>(initialTheme?.config.backgroundType ?? 'color');
   
-  const [headerColor, setHeaderColor] = useState(initialTheme?.config.headerColor ?? '#ffffff');
-  const [sidebarColor, setSidebarColor] = useState(initialTheme?.config.sidebarColor ?? '#f4f4f5');
-  const [cardColor, setCardColor] = useState(initialTheme?.config.cardColor ?? '#ffffff');
+  const [headerColor, setHeaderColor] = useState(initialTheme?.config.headerColor ?? '#1a1f1c');
+  const [sidebarColor, setSidebarColor] = useState(initialTheme?.config.sidebarColor ?? '#161a18');
+  const [cardColor, setCardColor] = useState(initialTheme?.config.cardColor ?? '#232a26');
   const [glassmorphism, setGlassmorphism] = useState(initialTheme?.config.glassmorphism ?? false);
   const [isDragging, setIsDragging] = useState(false);
-  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('mobile');
+  
+  // Auto-detect device for default preview mode
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>(window.innerWidth < 768 ? 'mobile' : 'desktop');
 
   // Use a ref to keep track of the current theme ID to avoid regenerating random UUIDs on every render
   const themeIdRef = useRef(initialTheme?.id ?? `custom_${crypto.randomUUID()}`);
@@ -62,6 +66,8 @@ export function CustomThemeEditor({
       const theme: CustomTheme = {
         id: themeIdRef.current,
         name: name.trim() || 'Untitled Draft',
+        description: description.trim(),
+        mode,
         isPublic,
         status: 'draft',
         config: {
@@ -89,7 +95,7 @@ export function CustomThemeEditor({
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [name, isPublic, msgColor, recvColor, sendColor, bgColor, bgType, font, bgImage, headerColor, sidebarColor, cardColor, glassmorphism]);
+  }, [name, description, mode, isPublic, msgColor, recvColor, sendColor, bgColor, bgType, font, bgImage, headerColor, sidebarColor, cardColor, glassmorphism]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -120,8 +126,8 @@ export function CustomThemeEditor({
   };
 
   const handleSave = async (asDraft: boolean) => {
-    if (!asDraft && !name.trim()) {
-      alert("Theme must be named before saving or publishing.");
+    if (!asDraft && (!name.trim() || !description.trim())) {
+      alert("Theme must have a name and description before saving or publishing.");
       return;
     }
     const finalStatus = asDraft || !name.trim() ? 'draft' : 'saved';
@@ -129,6 +135,8 @@ export function CustomThemeEditor({
     const theme: CustomTheme = {
       id: themeIdRef.current,
       name: name.trim() || 'Untitled Draft',
+      description: description.trim(),
+      mode,
       isPublic,
       status: finalStatus,
       config: {
@@ -161,6 +169,8 @@ export function CustomThemeEditor({
           await supabase.from('public_themes').upsert({
             ...(payloadId ? { id: payloadId } : {}),
             name: theme.name,
+            description: theme.description,
+            mode: theme.mode,
             config: theme.config
           });
         }
@@ -219,7 +229,7 @@ export function CustomThemeEditor({
                     </div>
                     <div className="p-3">
                       <div className="flex items-center gap-2 p-2 rounded-md bg-foreground/5">
-                        <img src="https://miaoda-conversation-file.s3cdn.medo.dev/user-bsa31zk3mzgg/app-bu2wys49rfgh/20260724/icon-512x512.png" className="w-8 h-8 rounded-full object-cover" alt="Sylva" />
+                        <img src="/icon-512x512.png" className="w-8 h-8 rounded-full object-cover" alt="Sylva" />
                         <div className="flex-1">
                           <div className="h-3 w-16 rounded bg-foreground/30 mb-1" />
                           <div className="h-2 w-24 rounded bg-foreground/20" />
@@ -230,7 +240,7 @@ export function CustomThemeEditor({
                 )}
                 <div className="flex-1 flex flex-col min-w-0">
                   <div className="h-12 border-b border-border flex items-center px-3 gap-3 shrink-0" style={{ backgroundColor: headerColor }}>
-                    <img src="https://miaoda-conversation-file.s3cdn.medo.dev/user-bsa31zk3mzgg/app-bu2wys49rfgh/20260724/icon-512x512.png" className="w-8 h-8 rounded-full object-cover shadow-sm" alt="Sylva" />
+                    <img src="/icon-512x512.png" className="w-8 h-8 rounded-full object-cover shadow-sm" alt="Sylva" />
                     <div className="font-semibold text-sm drop-shadow-sm mix-blend-luminosity">Sylva</div>
                   </div>
                   
@@ -267,9 +277,23 @@ export function CustomThemeEditor({
           </div>
           
           <div className="w-full md:w-7/12 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Theme Name <span className="text-destructive">*</span></Label>
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Olive Dusk" />
+              </div>
+              <div className="space-y-2">
+                <Label>Mode <span className="text-destructive">*</span></Label>
+                <select className="w-full h-10 px-3 border border-border bg-card rounded-md shadow-sm" value={mode} onChange={e => setMode(e.target.value as 'light'|'dark')}>
+                  <option value="dark">Dark Mode</option>
+                  <option value="light">Light Mode</option>
+                </select>
+              </div>
+            </div>
+            
             <div className="space-y-2">
-              <Label>Theme Name</Label>
-              <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. My Cool Theme" />
+              <Label>Description <span className="text-destructive">*</span></Label>
+              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="A short description about your theme..." />
             </div>
             
             <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border border-border">

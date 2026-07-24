@@ -18,30 +18,53 @@ export default function ThemesPage() {
   const [editingTheme, setEditingTheme] = useState<CustomTheme | undefined>(undefined);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [publicThemes, setPublicThemes] = useState<CustomTheme[]>([]);
+  const [publicThemes, setPublicThemes] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [filterMode, setFilterMode] = useState<'all' | 'light' | 'dark'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'az' | 'za' | 'downloads' | 'rating'>('downloads');
 
   const loadCustomThemes = async () => {
     const themes = await getCustomThemes();
     setCustomThemes(themes);
   };
 
-  const fetchPublicThemes = async (query: string = '') => {
+  const fetchPublicThemes = async (query: string = '', mode: string, sort: string) => {
     setIsSearching(true);
     try {
-      let req = supabase.from('public_themes').select('*').order('downloads', { ascending: false }).limit(20);
+      let req = supabase.from('public_themes').select('*');
+      
       if (query.trim()) {
         req = req.ilike('name', `%${query.trim()}%`);
       }
+      if (mode !== 'all') {
+        req = req.eq('mode', mode);
+      }
+      
+      switch (sort) {
+        case 'newest': req = req.order('created_at', { ascending: false }); break;
+        case 'oldest': req = req.order('created_at', { ascending: true }); break;
+        case 'az': req = req.order('name', { ascending: true }); break;
+        case 'za': req = req.order('name', { ascending: false }); break;
+        case 'downloads': req = req.order('downloads', { ascending: false }); break;
+        case 'rating': req = req.order('rating_sum', { ascending: false }); break; // Simplified rating sort
+      }
+      
+      req = req.limit(30);
+
       const { data, error } = await req;
       if (!error && data) {
         setPublicThemes(data.map(d => ({
           id: `public_${d.id}`,
           name: d.name,
+          description: d.description,
+          mode: d.mode,
           isPublic: true,
           status: 'saved',
-          config: d.config
-        } as CustomTheme)));
+          config: d.config,
+          downloads: d.downloads,
+          rating_sum: d.rating_sum,
+          rating_count: d.rating_count
+        })));
       }
     } catch (e) {
       console.error(e);
@@ -52,15 +75,26 @@ export default function ThemesPage() {
 
   useEffect(() => {
     loadCustomThemes();
-    fetchPublicThemes();
+    fetchPublicThemes('', filterMode, sortBy);
   }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchPublicThemes(searchQuery);
+      fetchPublicThemes(searchQuery, filterMode, sortBy);
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, filterMode, sortBy]);
+
+  const handleRateTheme = async (id: string, rating: number) => {
+    const realId = id.replace('public_', '');
+    const { error } = await supabase.rpc('rate_theme', { p_theme_id: realId, p_rating: rating });
+    if (!error) {
+      alert('Thanks for rating!');
+      fetchPublicThemes(searchQuery, filterMode, sortBy);
+    } else {
+      alert('Please log in to rate themes.');
+    }
+  };
 
   const handleSelectTheme = (theme: string) => {
     setTheme(theme as any);
@@ -96,7 +130,6 @@ export default function ThemesPage() {
   };
 
   const filteredPublicThemes = publicThemes.filter(t => 
-    t.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
     !customThemes.some(ct => ct.id === t.id) // Don't show if already installed
   );
 
@@ -204,12 +237,35 @@ export default function ThemesPage() {
             <p className="text-xs text-muted-foreground mt-1">Discover themes created by the community.</p>
           </div>
           
-          <Input 
-            placeholder="Search themes..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-card"
-          />
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input 
+              placeholder="Search themes..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-card flex-1"
+            />
+            <select 
+              className="h-10 px-3 border border-border bg-card rounded-md text-sm"
+              value={filterMode}
+              onChange={(e) => setFilterMode(e.target.value as any)}
+            >
+              <option value="all">All Modes</option>
+              <option value="light">Light Mode</option>
+              <option value="dark">Dark Mode</option>
+            </select>
+            <select 
+              className="h-10 px-3 border border-border bg-card rounded-md text-sm"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+            >
+              <option value="newest">Recently added</option>
+              <option value="oldest">Oldest</option>
+              <option value="az">A-Z</option>
+              <option value="za">Z-A</option>
+              <option value="downloads">Most used</option>
+              <option value="rating">Top rated</option>
+            </select>
+          </div>
 
           <div className="grid grid-cols-1 gap-3 mt-4">
             {isSearching ? (
@@ -222,19 +278,37 @@ export default function ThemesPage() {
               </div>
             ) : (
               filteredPublicThemes.map(pt => (
-                <div key={pt.id} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card">
+                <div key={pt.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border border-border bg-card gap-3">
                   <div className="flex-1 min-w-0 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full border shadow-sm shrink-0" style={{ backgroundColor: pt.config.backgroundColor }} />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{pt.name}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        Font: {pt.config.fontFamily} {pt.config.glassmorphism && '• Glass'}
+                      <div className="font-medium text-sm flex items-center gap-2">
+                        <span className="truncate">{pt.name}</span>
+                        <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded capitalize">{pt.mode}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate mb-1">
+                        {pt.description || 'No description'}
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                        <span>{pt.downloads || 0} downloads</span>
+                        <span className="flex items-center gap-0.5">
+                          ⭐ {(pt.rating_count ? (pt.rating_sum / pt.rating_count).toFixed(1) : 'New')}
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => handleInstallPublicTheme(pt)} className="shrink-0 ml-2 gap-1 text-xs h-8">
-                    <Download className="w-3.5 h-3.5" /> Install
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    <div className="flex gap-0.5 mr-2">
+                      {[1,2,3,4,5].map(star => (
+                        <button key={star} onClick={() => handleRateTheme(pt.id, star)} className="text-muted-foreground hover:text-yellow-500 text-xs transition-colors">
+                          ★
+                        </button>
+                      ))}
+                    </div>
+                    <Button variant="secondary" size="sm" onClick={() => handleInstallPublicTheme(pt)} className="gap-1 text-xs h-8">
+                      <Download className="w-3.5 h-3.5" /> Install
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
@@ -321,7 +395,7 @@ export default function ThemesPage() {
       {editorOpen && (
         <CustomThemeEditor
           open={editorOpen}
-          onClose={() => setEditorOpen(false)}
+          onClose={() => { setEditorOpen(false); loadCustomThemes(); }}
           initialTheme={editingTheme}
           onSave={loadCustomThemes}
         />

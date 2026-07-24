@@ -7,6 +7,8 @@ const STORE_NAME = 'themes';
 export type CustomTheme = {
   id: string;
   name: string;
+  description?: string;
+  mode?: 'light' | 'dark';
   isPublic: boolean;
   status: 'draft' | 'saved';
   config: {
