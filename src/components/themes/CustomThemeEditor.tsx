@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import type { CustomTheme } from '@/lib/customThemesStore';
 import { saveCustomTheme } from '@/lib/customThemesStore';
-import { UploadCloud, Send, Smartphone, Monitor } from 'lucide-react';
+import { UploadCloud, Smartphone, Monitor } from 'lucide-react';
 
 const ColorPickerCircle = ({ value, onChange, label }: { value: string, onChange: (v: string) => void, label: string }) => (
   <div className="flex flex-col items-center gap-2 shrink-0">
