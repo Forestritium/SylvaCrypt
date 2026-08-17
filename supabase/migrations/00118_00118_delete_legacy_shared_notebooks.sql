@@ -1,0 +1,1 @@
+delete from shared_notebooks;
